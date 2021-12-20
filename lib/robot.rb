@@ -1,117 +1,79 @@
 class Robot
-  require "location.rb"
-  attr_accessor :direction, :location, :board
+  require "coordinates.rb"
 
-  def initialize(board)
-    @board = board
+  attr_accessor :position, :message
+
+  def update_position_with(coordinates)
+    self.position = coordinates
   end
 
-  def update_position(location, direction)
-    self.location = location
-    self.direction = direction
-  end
-
-  def in_bounds_for_board?(location_x=location.x, location_y=location.y)
-    location_x <= board.x && location_y <= board.y && location_x >= 0 && location_y >= 0
-  end
-
-  def process(command)
-    case
-      when command.upcase.eql?('MOVE')
-        move
-      when command.upcase.start_with?('PLACE ')
-        place(command)
-      when command.upcase.eql?('LEFT')
-        change_orientation(false)
-      when command.upcase.eql?('RIGHT')
-        change_orientation(true)
-      when command.upcase.eql?('REPORT')
-        puts report
-      when command.upcase.eql?('QUIT')
-        return 'thank you for moving the robot'
-      else
-        puts incorrect_command
-      end
-    command = (print 'what shall we do next: '; STDIN.gets.rstrip)
-    process(command)
-  end
-
-  private
-
-  def place(command)
-    command.slice!(0,6)
-    coordinates = command.split(',')
-    input_error = false
-    if coordinates.count == 3
-      new_direction = coordinates.pop().upcase
-      if board.valid_directions.include?(new_direction) && coordinates.all? {|c| valid_coordinate(c) }
-        new_location = Location.new(coordinates)
-        if in_bounds_for_board?(new_location.x,new_location.y)
-          update_position(new_location, new_direction)
-        else
-          input_error = true
-        end
-      else
-        input_error = true
-      end
+  def place(command, board)
+    reset_message
+    location_and_direction = coordinates_from(command)
+    if location_and_direction.count == 3
+      x = location_coordinate(location_and_direction[0])
+      y = location_coordinate(location_and_direction[1])
+      direction = location_and_direction[2]
+      coordinates = Coordinates.new(x: x, y: y, direction: direction)
+      update_position_with(coordinates) if coordinates.valid_for?(board)
+      self.message = coordinates.error_message
     else
-      input_error = true
-    end
-    puts incorrect_command if input_error
-  end
-
-  def move(offset=1)
-    if not_placed?
-      puts place_robot
-    else
-      current_x = location.x
-      current_y = location.y
-      case direction
-      when 'N'
-        self.location.y += offset
-      when 'E'
-        self.location.x += offset
-      when 'S'
-        self.location.y -= offset
-      when 'W'
-        self.location.x -= offset
-      end
-      unless in_bounds_for_board?
-        self.location.x = current_x
-        self.location.y = current_y
-        puts "sorry I can't do that"
-      end
+      self.message = "sorry that was not valid, please type 'PLACE X,Y,D' to continue."
     end
   end
 
-  def change_orientation(clockwise)
-    if not_placed?
-      puts place_robot
-    else
-      points = clockwise ? board.valid_directions : board.valid_directions.reverse
-      points_index = points.index(direction)
-      self.direction = points_index + 1 > points.count - 1 ? points[0] : points[points_index + 1]
+  def move(offset:1, board:)
+    reset_message
+    unless not_placed?
+      next_x = position.x
+      next_y = position.y
+
+      case position.direction
+      when board.valid_directions[0]
+        next_y += offset
+      when board.valid_directions[1]
+        next_x += offset
+      when board.valid_directions[2]
+        next_y -= offset
+      when board.valid_directions[3]
+        next_x -= offset
+      end
+
+      next_coordinates = Coordinates.new(x: next_x, y: next_y, direction: position.direction)
+      update_position_with(next_coordinates) if next_coordinates.valid_for?(board)
+      self.message = next_coordinates.error_message
     end
+  end
+
+  def change_orientation(rotational_direction)
+    reset_message
+    position.rotate(rotational_direction) unless not_placed?
   end
 
   def report
-    return place_robot if not_placed?
-    @report = "Robot is at x/y coordinates #{location.x}/#{location.y} and facing #{direction}"
+    self.message = "Robot is at x/y coordinates #{position.display_x}/#{position.display_y} and facing #{position.direction}" unless not_placed?
+  end
+
+
+  private
+
+  def reset_message
+    self.message = nil
   end
 
   def not_placed?
-    self.direction.nil? || self.location.nil?
+    if self.position.nil?
+      self.message = "you must PLACE the robot before we can move it."
+      return true
+    end
+    false
   end
 
-  def place_robot
-    @place_robot = "first PLACE the robot"
+  def coordinates_from(command)
+    command.slice!(6, command.length).split(',')
   end
 
-  def incorrect_command
-    @incorrect_command = "incorrect command given, try again"
-  end
-
-  def valid_coordinate(value)
-    /\A-?\d+\Z/ === value
+  def location_coordinate(coordinate)
+    coordinate.to_i - 1 if coordinate !~ /\D/
   end
 end
